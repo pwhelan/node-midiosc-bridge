@@ -8,6 +8,31 @@ var midi = require('midi'),
 var output = new midi.output();
 output.openVirtualPort("MIDIOSC Router");
 
+var socket = udp.createSocket('udp4');
+socket.on("message", function(buffer, remote) {
+	try {
+		var msg = osc.fromBuffer(buffer);
+		var fs = require('fs');
+		
+		
+		if (msg.address == '/ping') {
+			RouterScript.addclient({address: remote.address, port: 9000});
+			
+			console.log('Remote Client');
+			console.log(remote);
+		}
+		else {
+			RouterScript.run(msg);
+		}
+	}
+	catch(err) {
+		console.error('Invalid OSC packet');
+		console.error(err);
+	}
+});
+
+socket.bind(8000);
+
 
 function LoadScript(name)
 {
@@ -15,17 +40,35 @@ function LoadScript(name)
 	var _path = __dirname + '/' + _name + '.js';
 	var _script;
 	var self = this;
+	var _clients = [];
+	
 	
 	var _output = {
 		midi: output,
 		messageSent: false,
-		sendMessage: function(midiMessage) {
+		sendMIDI: function(midiMessage) {
 			_output.messageSent = true;
 			_output.midi.sendMessage(midiMessage);
+		},
+		sendOSC: function(address, args) {
+			var buf;
+			buf = osc.toBuffer({
+				oscType: 'message',
+				address: address,
+				args: args
+			});
+			
+			for (var i = 0; i < _clients.length; i++) {
+				socket.send(buf, 0, buf.length, _clients[i].port, 
+					_clients[i].address);
+			}
 		}
 	};
 	
 	var _midi = {
+		note: function(on, channel) {
+			return (on ? 0x90 : 0x80) | ((channel-1) & 0x0f);
+		},
 		noteOn: function(channel) {
 			return 0x80 | ((channel-1) & 0x0f);
 		},
@@ -63,7 +106,7 @@ function LoadScript(name)
 			
 			return {lsb: lsb, msb: msb};
 		}
-	}
+	};
 	
 	this.run = function(msg) 
 	{
@@ -82,7 +125,13 @@ function LoadScript(name)
 			console.log('Unknown OSC packet');
 			console.log(msg);
 		}
-	}
+	};
+	
+	
+	this.sendOSC = function(address, args)
+	{
+		_output.sendOSC(address, args);
+	};
 	
 	this.load = function()
 	{
@@ -94,7 +143,12 @@ function LoadScript(name)
 			console.error('Error loading router script');
 			console.error(err);
 		}
-	}
+	};
+	
+	this.addclient = function(remote)
+	{
+		_clients.push(remote);
+	};
 	
 	this.load();
 	
@@ -104,23 +158,8 @@ function LoadScript(name)
 }
 
 var RouterScript = new LoadScript('script');
+var Clients = [];
 
-
-var socket = udp.createSocket('udp4');
-socket.on("message", function(buffer, remote) {
-	try {
-		var msg = osc.fromBuffer(buffer);
-		var fs = require('fs');
-		
-		RouterScript.run(msg);
-	}
-	catch(err) {
-		console.error('Invalid OSC packet');
-		console.error(err);
-	}
-});
-
-socket.bind(8000);
 
 var ad = mdns.createAdvertisement(mdns.udp('osc'), 8000);
 ad.start();
