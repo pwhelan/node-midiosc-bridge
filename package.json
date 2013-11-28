@@ -1,0 +1,9 @@
+{
+	"name":		"node-midiosc-bridge",
+	"version":	"0.0.1",
+	"dependencies":	{
+		"mdns":		"1.1.0",
+		"osc-min":	"0.0.12",
+		"midi":		"0.7.0"
+	}
+}
