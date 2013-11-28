@@ -1,84 +1,87 @@
 Controller = { 
 	Volume: 20,
-	EQHi: 21,
-	EQMid: 22,
-	EQLow: 23,
+	EQ: {
+		High: 21,
+		Mid: 22,
+		Low: 23
+	},
 	Play: 24,
-	RateUp: 25,
-	RateDown: 26,
-	Cue: 27
+	Bwd: 25,
+	Fwd: 26,
+	Cue: 27,
+	Pfl: 28
 };
 
-var parts = msg.address.match(/(\d)\/([^\d]+)([\d]+)/);
-
-address = {
-	channel:	parseInt(parts[1]),
-	controller:	parts[2],
-	number:		parseInt(parts[3])
+String.prototype.capitalize = function() 
+{
+	return this.charAt(0).toUpperCase() + this.slice(1);
 }
 
-if (address.controller == 'fader' && [7,9].indexOf(address.number) != -1) {
-	output.sendMessage([
-		midi.continuousController((address.number == 7 ? 1 : 2)),
-		Controller.Volume,
-		midi.floatTo7bit(msg.args[0].value)
-	]);
-}
-else if ((address.controller == 'rotary' && [2,5,6,7,8,9].indexOf(address.number) != -1)) {
-	var eq;
-	var channel = address.number <= 6 ? 1 : 2;
+bridge.on('osc', function(msg) {
+	var parts = msg.address.split('/');
+	addr = {
+		chan:		parseInt(parts[1]),
+		ctlr:		parts[2],
+		params:		parts.slice(3), 
+	};
 	
-	switch(address.number) {
-		case 2: eq = Controller.EQHi; break;
-		case 5: eq = Controller.EQMid; break;
-		case 6: eq = Controller.EQLow; break;
-		case 7: eq = Controller.EQHi;  break;
-		case 8: eq = Controller.EQMid; break;
-		case 9: eq = Controller.EQLow; break;
+	if (addr.ctlr == 'eq') {
+		output.sendMIDI([
+			midi.cc(addr.chan),
+			Controller.EQ[addr.params[0].capitalize()],
+			midi.floatTo7bit(msg.args[0].value)
+		]);
+	}
+	if (addr.ctlr == 'kill') {
+		output.sendMIDI([
+			midi.note(msg.args[0].value, addr.chan),
+			Controller.EQ[addr.params[0].capitalize()],
+			midi.floatTo7bit(msg.args[0].value)
+		]);
+	}
+	else if (['bwd', 'fwd', 'cue', 'play', 'pfl'].indexOf(addr.ctlr) != -1) {
+		output.sendMIDI([
+			midi.note(msg.args[0].value, addr.chan),
+			Controller[addr.ctlr.capitalize()],
+			127
+		]);
+	}
+	else if (addr.ctlr == 'pitch') {
+		var pitch = midi.floatToPitch(msg.args[0].value);
+		
+		output.sendMIDI([
+			midi.pitchBend(addr.chan),
+			pitch.lsb,
+			pitch.msb
+		]);
+	}
+	else if (addr.ctlr == 'volume') {
+		output.sendMIDI([
+			midi.cc(addr.chan),
+			Controller.Volume,
+			midi.floatTo7bit(msg.args[0].value)
+		]);
 	}
 	
-	output.sendMessage([
-		midi.continuousController(channel),
-		eq,
-		midi.floatTo7bit(msg.args[0].value)
-	]);
-}
-else if (address.controller == 'fader' && [5,11].indexOf(address.number) != -1) {
-	var pitch = midi.floatToPitch(msg.args[0].value);
+	// Keep the different pages in sync
+	if (['pfl', 'volume'].indexOf(addr.ctlr) != -1) {
+		output.sendOSC(msg.address, msg.args);
+	}
 	
-	output.sendMessage([
-		midi.pitchBend((address.number == 5 ? 1 : 2)),
-		pitch.lsb,
-		pitch.msb
-	]);
-}
-else if (address.controller == 'toggle' && [16,28].indexOf(address.number) != -1) {
-	output.sendMessage([
-		msg.args[0].value ? 
-			midi.noteOff((address.number == 16 ? 1 : 2)) :
-			midi.noteOn((address.number == 16 ? 1 : 2)),
-		Controller.Play,
-		127
-	]);
-}
-else if (address.controller == 'push' && [5,7,10,9].indexOf(address.number) != -1) {
-	var channel	= [5,7].indexOf(address.number) != -1 ? 1 : 2;
-	var direction	= [5,10].indexOf(address.number) != -1 ? 'Up' : 'Down';
-	
-	output.sendMessage([
-		msg.args[0].value ?
-			midi.noteOff(channel) :
-			midi.noteOn(channel),
-		Controller['Rate' + direction],
-		127
-	]);
-}
-else if (address.controller == 'push' && [8,11].indexOf(address.number) != -1) {
-	output.sendMessage([
-		msg.args[0].value ?
-			midi.noteOff((address.number == 8 ? 1 : 2)) :
-			midi.noteOn((address.number == 8 ? 1 : 2)),
-		Controller.Cue,
-		127
-	]);
-}
+	//
+	if (addr.ctlr == null && [1,2].indexOf(addr.chan) != -1) {
+		output.sendMIDI([
+			midi.patchChange(1),
+			addr.chan
+		]);
+	}
+});
+
+bridge.on('midi', function(msg) {
+	if (msg.note == Controller.Play) {
+		output.sendOSC('/' + msg.channel + '/play', [{
+			type:	'float',
+			value:	(msg.command == 0x90 ? 1.0 : 0.0)
+		}]);
+	}
+});

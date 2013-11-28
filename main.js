@@ -3,10 +3,18 @@ var midi = require('midi'),
 	osc = require('osc-min'),
 	fs = require('fs'),
 	vm = require('vm'),
-	mdns = require('mdns');
+	mdns = require('mdns'),
+	events = require('events');
 
 var output = new midi.output();
 output.openVirtualPort("MIDIOSC Router");
+
+var input = new midi.input();
+input.openVirtualPort("MIDIOSC Router");
+
+input.on('message', function(deltaTime, message) {
+	RouterScript.recvMIDI(message);
+});
 
 var socket = udp.createSocket('udp4');
 socket.on("message", function(buffer, remote) {
@@ -17,13 +25,8 @@ socket.on("message", function(buffer, remote) {
 		
 		if (msg.address == '/ping') {
 			RouterScript.addclient({address: remote.address, port: 9000});
-			
-			console.log('Remote Client');
-			console.log(remote);
 		}
-		else {
-			RouterScript.run(msg);
-		}
+		RouterScript.recvOSC(msg);
 	}
 	catch(err) {
 		console.error('Invalid OSC packet');
@@ -33,6 +36,18 @@ socket.on("message", function(buffer, remote) {
 
 socket.bind(8000);
 
+function Bridge()
+{
+	events.EventEmitter.call(this);
+}
+
+Bridge.super_ = events.EventEmitter;
+Bridge.prototype = Object.create(events.EventEmitter.prototype, {
+	constructor: {
+		value: Bridge,
+		enumerable: false
+	}
+});
 
 function LoadScript(name)
 {
@@ -41,13 +56,15 @@ function LoadScript(name)
 	var _script;
 	var self = this;
 	var _clients = [];
+	var _bridge;
 	
 	
 	var _output = {
 		midi: output,
-		messageSent: false,
+		//messageSent: false,
+		socket: socket,
 		sendMIDI: function(midiMessage) {
-			_output.messageSent = true;
+			//_output.messageSent = true;
 			_output.midi.sendMessage(midiMessage);
 		},
 		sendOSC: function(address, args) {
@@ -59,8 +76,7 @@ function LoadScript(name)
 			});
 			
 			for (var i = 0; i < _clients.length; i++) {
-				socket.send(buf, 0, buf.length, _clients[i].port, 
-					_clients[i].address);
+				_output.socket.send(buf, 0, buf.length, 9000, _clients[i]);
 			}
 		}
 	};
@@ -108,29 +124,68 @@ function LoadScript(name)
 		}
 	};
 	
-	this.run = function(msg) 
+	var _run = function() 
 	{
 		try {
-			_output.messageSent = false;
+			_bridge = new Bridge();
 			_script.runInNewContext({
 				output: _output, 
-				msg: msg,
-				midi: _midi
+				midi: _midi,
+				bridge: _bridge,
+				console: console
 			});
 		}
 		catch(err) {
 			console.error('Routing error: ' + err);
 		}
-		if (!_output.messageSent) {
-			console.log('Unknown OSC packet');
-			console.log(msg);
+	};
+	
+	this.recvOSC = function(msg)
+	{
+		_bridge.emit('osc', msg);
+		/*
+			_output.messageSent = false;
+			if (!_output.messageSent) {
+				console.log('Unknown OSC packet');
+				console.log(msg);
+			}
+		*/
+	};
+	
+	this.recvMIDI = function(msg)
+	{
+		var cmd = msg[0] & 0xf0;
+		var chan = (msg[0] & 0x0f) + 1;
+		var _midi = {
+			command:	cmd,
+			channel:	chan,
+			parameters:	msg.slice(1)
+		};
+		
+		switch(_midi.command) {
+			case 0x90:
+			case 0x80:
+				_midi.note = msg[1];
+				_midi.velocity = msg[2];
+				break;
+		}
+		
+		try {
+			_bridge.emit('midi', _midi);
+		}
+		catch (err) {
+			console.error(err);
 		}
 	};
 	
-	
 	this.sendOSC = function(address, args)
 	{
-		_output.sendOSC(address, args);
+		try {
+			_output.sendOSC(address, args);
+		}
+		catch (err) {
+			console.error(err);
+		}
 	};
 	
 	this.load = function()
@@ -138,6 +193,7 @@ function LoadScript(name)
 		console.log('Loading script: ' + _name);
 		try {
 			_script = vm.createScript(fs.readFileSync(_path, 'utf-8'), _name + '.js');
+			_run();
 		}
 		catch(err) {
 			console.error('Error loading router script');
@@ -147,7 +203,9 @@ function LoadScript(name)
 	
 	this.addclient = function(remote)
 	{
-		_clients.push(remote);
+		if (_clients.indexOf(remote.address) == -1) {
+			_clients.push(remote.address);
+		}
 	};
 	
 	this.load();
