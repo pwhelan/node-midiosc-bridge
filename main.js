@@ -33,22 +33,25 @@ function LoadScript(name)
 			return 0x90 | ((channel-1) & 0x0f);
 		},
 		afterTouch: function(channel) {
-			return 0xa0 | ((channel-1) & 0x0f);	
+			return 0xa0 | ((channel-1) & 0x0f);
 		},
 		continuousController: function(channel) {
-			return 0xb0 | ((channel-1) & 0x0f);	
+			return 0xb0 | ((channel-1) & 0x0f);
+		},
+		cc: function(channel) {
+			return 0xb0 | ((channel-1) & 0x0f);
 		},
 		patchChange: function(channel) {
-			return 0xc0 | ((channel-1) & 0x0f);	
+			return 0xc0 | ((channel-1) & 0x0f);
 		},
 		channelPressure: function(channel) {
-			return 0xd0 | ((channel-1) & 0x0f);	
+			return 0xd0 | ((channel-1) & 0x0f);
 		},
 		pitchBend: function(channel) {
-			return 0xe0 | ((channel-1) & 0x0f);	
+			return 0xe0 | ((channel-1) & 0x0f);
 		},
 		systemExclusive: function(command) {
-			return 0xf0 | (command & 0x0f);	
+			return 0xf0 | (command & 0x0f);
 		},
 		floatTo7bit: function(value) {
 			return (127.0 * value).toFixed(0);
