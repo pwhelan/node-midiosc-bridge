@@ -128,10 +128,10 @@ function LoadScript(name)
 			return (on ? 0x90 : 0x80) | ((channel-1) & 0x0f);
 		},
 		noteOn: function(channel) {
-			return 0x80 | ((channel-1) & 0x0f);
+			return 0x90 | ((channel-1) & 0x0f);
 		},
 		noteOff: function(channel) {
-			return 0x90 | ((channel-1) & 0x0f);
+			return 0x80 | ((channel-1) & 0x0f);
 		},
 		afterTouch: function(channel) {
 			return 0xa0 | ((channel-1) & 0x0f);
