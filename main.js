@@ -182,12 +182,32 @@ function LoadScript(name)
 	{
 		try {
 			_bridge = new Bridge();
-			_script.runInNewContext({
+			_context = {
 				output: _output, 
 				midi: _midi,
 				bridge: _bridge,
-				console: console
-			});
+				console: console,
+				msg: { type: 'init' }
+			};
+			_script.runInNewContext(_context);
+			console.log('Listeners');
+			
+			_isSimple = _bridge.listeners('osc').length == 0 &&
+					_bridge.listeners('midi').length == 0;
+			
+			if (_isSimple) {
+				_bridge
+					.on('osc', function(msg) {
+						msg.type = 'osc';
+						_context.msg = msg;
+						_script.runInNewContext(_context)
+					})
+					.on('midi', function(msg) {
+						msg.type = 'midi';
+						_context.msg = msg;
+						_script.runInNewContext(_context)
+					});
+			}
 		}
 		catch(err) {
 			console.error('Routing error: ' + err);
