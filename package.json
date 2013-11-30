@@ -4,6 +4,7 @@
 	"dependencies":	{
 		"mdns":		"1.1.0",
 		"osc-min":	"0.0.12",
-		"midi":		"0.7.0"
+		"midi":		"0.7.0",
+		"node-getopt":	"0.2.3"
 	}
 }

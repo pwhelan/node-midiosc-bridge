@@ -1,3 +1,31 @@
+var defaults = {
+	'osc_port':	8000,
+	'midi_port':	"MIDIOSC Router",
+};
+
+var opt = require('node-getopt').create([
+	['l',	'listen=ARG',	'Incoming UDP port for OSC connections, default: ' + defaults.osc_port],
+	['m',	'midi=ARG',	'Virtual MIDI port name, default: ' + defaults.midi_port],
+	['h' ,	'help',		'display this help']
+])
+.bindHelp()
+.setHelp(
+	"Usage: " + process.argv.slice(0,2).join(' ') + " [OPTIONS] <scripts> \n" +
+	"Node MIDI to OSC Router.\n" + 
+	"\n" + 
+	"[[OPTIONS]]\n" +
+	"\n" +
+	"Repository: http://github.com/pwhelan/node-midiosc-bridge\n"
+);
+
+var args = opt.parseSystem(); // parse command line
+
+
+if (args.argv.length <= 0) {
+	opt.showHelp();
+	process.exit(1);
+}
+
 var midi = require('midi'),
 	udp = require('dgram'),
 	osc = require('osc-min'),
@@ -6,11 +34,20 @@ var midi = require('midi'),
 	mdns = require('mdns'),
 	events = require('events');
 
+
 var output = new midi.output();
-output.openVirtualPort("MIDIOSC Router");
+output.openVirtualPort(
+	args.options.midi ?
+		args.options.midi: 
+		defaults.midi_port 
+);
 
 var input = new midi.input();
-input.openVirtualPort("MIDIOSC Router");
+input.openVirtualPort(
+	args.options.midi ?
+		args.options.midi: 
+		defaults.midi_port 
+);
 
 input.on('message', function(deltaTime, message) {
 	RouterScript.recvMIDI(message);
@@ -34,7 +71,11 @@ socket.on("message", function(buffer, remote) {
 	}
 });
 
-socket.bind(8000);
+socket.bind(	
+	args.options.listen ?
+		args.options.listen: 
+		defaults.osc_port 
+);
 
 function Bridge()
 {
@@ -52,12 +93,13 @@ Bridge.prototype = Object.create(events.EventEmitter.prototype, {
 function LoadScript(name)
 {
 	var _name = name;
-	var _path = __dirname + '/' + _name + '.js';
+	var _path = __dirname + '/' + _name;
 	var _script;
 	var self = this;
 	var _clients = [];
 	var _bridge;
-	
+	var _context;
+	var _isSimple = false;
 	
 	var _output = {
 		midi: output,
@@ -192,7 +234,7 @@ function LoadScript(name)
 	{
 		console.log('Loading script: ' + _name);
 		try {
-			_script = vm.createScript(fs.readFileSync(_path, 'utf-8'), _name + '.js');
+			_script = vm.createScript(fs.readFileSync(_path, 'utf-8'), _name);
 			_run();
 		}
 		catch(err) {
@@ -215,11 +257,16 @@ function LoadScript(name)
 	});
 }
 
-var RouterScript = new LoadScript('script');
-var Clients = [];
+var RouterScript = new LoadScript(args.argv[0]);
 
 
-var ad = mdns.createAdvertisement(mdns.udp('osc'), 8000);
+var ad = mdns.createAdvertisement(
+	mdns.udp('osc'), 
+	args.options.listen ?
+		args.options.listen: 
+		defaults.osc_port 
+);
+
 ad.start();
 
 process.on('SIGINT', function () {
