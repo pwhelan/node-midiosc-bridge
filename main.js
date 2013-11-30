@@ -163,6 +163,18 @@ function LoadScript(name)
 			var msb = (pitch >> 7);
 			
 			return {lsb: lsb, msb: msb};
+		},
+		commandName: function(command) {
+			switch(msg.command) {
+				case 0x80: return "noteoff";
+				case 0x90: return "noteon";
+				case 0xa0: return "aftertouch";
+				case 0xb0: return "continuouscontroller";
+				case 0xc0: return "patchchange";
+				case 0xd0: return "channelpressure";
+				case 0xe0: return "pitchbend";
+				case 0xf0: return "systemexclusive";
+			}	
 		}
 	};
 	
@@ -198,22 +210,48 @@ function LoadScript(name)
 	{
 		var cmd = msg[0] & 0xf0;
 		var chan = (msg[0] & 0x0f) + 1;
-		var _midi = {
+		var _msg = {
 			command:	cmd,
 			channel:	chan,
 			parameters:	msg.slice(1)
 		};
 		
-		switch(_midi.command) {
+		_msg.commandname = _midi.commandName(_msg.command);
+		
+		
+		switch(_msg.command) {
 			case 0x90:
 			case 0x80:
-				_midi.note = msg[1];
-				_midi.velocity = msg[2];
+				_msg.note = msg[1];
+				_msg.velocity = msg[2];
+				break;
+			case 0xa0:
+				_msg.note = msg[1];
+				_msg.touch = msg[2];
+				break;
+			case 0xb0:
+				_msg.controller = msg[1];
+				_msg.value = msg[2];
+				break;
+			case 0xc0:
+				_msg.patch = msg[1];
+				break;
+			case 0xd0:
+				_msg.pressure = msg[1];
+				break;
+			case 0xe0:
+				_msg.lsb = msg[1];
+				_msg.msb = msg[2];
+				// TODO: get this working...
+				//_midi.pitch = (msg[2] << 7 | msg[1]);
+				break;
+			case 0xf0:
+				// TODO: Sysex/MMC
 				break;
 		}
 		
 		try {
-			_bridge.emit('midi', _midi);
+			_bridge.emit('midi', _msg);
 		}
 		catch (err) {
 			console.error(err);
