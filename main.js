@@ -77,6 +77,7 @@ socket.bind(
 		defaults.osc_port 
 );
 
+
 function Bridge()
 {
 	events.EventEmitter.call(this);
@@ -97,9 +98,9 @@ function LoadScript(name)
 	var _script;
 	var self = this;
 	var _clients = [];
-	var _bridge;
+	var _bridge = new Bridge();
 	var _context;
-	var _isSimple = false;
+	
 	
 	var _output = {
 		midi: output,
@@ -151,7 +152,7 @@ function LoadScript(name)
 		pitchBend: function(channel) {
 			return 0xe0 | ((channel-1) & 0x0f);
 		},
-		systemExclusive: function(command) {
+		systemExclusive: function() {
 			return 0xf0 | (command & 0x0f);
 		},
 		floatTo7bit: function(value) {
@@ -164,8 +165,130 @@ function LoadScript(name)
 			
 			return {lsb: lsb, msb: msb};
 		},
+		MMC: {
+			stop: function(deviceID) {
+				return [
+					0xf0,
+					0x7f,
+					deviceID,
+					0x06,
+					0x01,
+					0xf7
+				];
+			},
+			play: function(deviceID) {
+				return [
+					0xf0,
+					0x7f,
+					deviceID,
+					0x06,
+					0x02,
+					0xf7
+				];
+			},
+			deferredPlay: function(deviceID) {
+				return [
+					0xf0,
+					0x7f,
+					deviceID,
+					0x06,
+					0x03,
+					0xf7
+				];
+			},
+			fastForward: function(deviceID) {
+				return [
+					0xf0,
+					0x7f,
+					deviceID,
+					0x06,
+					0x04,
+					0xf7
+				];
+			},
+			rewind: function(deviceID) {
+				return [
+					0xf0,
+					0x7f,
+					deviceID,
+					0x06,
+					0x05,
+					0xf7
+				];
+			},
+			punchIn: function(deviceID) {
+				return [
+					0xf0,
+					0x7f,
+					deviceID,
+					0x06,
+					0x06,
+					0xf7
+				];
+			},
+			punchOut: function(deviceID) {
+				return [
+					0xf0,
+					0x7f,
+					deviceID,
+					0x06,
+					0x07,
+					0xf7
+				];
+			},
+			recordPause: function(deviceID) {
+				return [
+					0xf0,
+					0x7f,
+					deviceID,
+					0x06,
+					0x08,
+					0xf7
+				];
+			},
+			pause: function(deviceID) {
+				return [
+					0xf0,
+					0x7f,
+					deviceID,
+					0x06,
+					0x09,
+					0xf7
+				];
+			},
+			eject: function(deviceID) {
+				return [
+					0xf0,
+					0x7f,
+					deviceID,
+					0x06,
+					0x0a,
+					0xf7
+				];
+			},
+			chase: function(deviceID) {
+				return [
+					0xf0,
+					0x7f,
+					deviceID,
+					0x06,
+					0x0b,
+					0xf7
+				];
+			},
+			reset: function(deviceID) {
+				return [
+					0xf0,
+					0x7f,
+					deviceID,
+					0x06,
+					0x0d,
+					0xf7
+				];
+			}
+		},
 		commandName: function(command) {
-			switch(msg.command) {
+			switch(command) {
 				case 0x80: return "noteoff";
 				case 0x90: return "noteon";
 				case 0xa0: return "aftertouch";
@@ -175,13 +298,27 @@ function LoadScript(name)
 				case 0xe0: return "pitchbend";
 				case 0xf0: return "systemexclusive";
 			}	
+		},
+		parseCommandName: function(commandName) {
+			switch(command.toLower()) {
+				case "noteoff": return 0x80;
+				case "noteon": return 0x90;
+				case "aftertouch": return 0xa0;
+				case "continuouscontroller": return 0xb0;
+				case "patchchange": return 0xc0;
+				case "channelpressure": return 0xd0;
+				case "pitchbend": return 0xe0;
+				case "systemexclusive": return 0xf0;
+			}
 		}
 	};
 	
 	var _run = function() 
 	{
 		try {
-			_bridge = new Bridge();
+			_bridge.removeAllListeners('osc');
+			_bridge.removeAllListeners('midi');
+			
 			_context = {
 				output: _output, 
 				midi: _midi,
@@ -190,9 +327,8 @@ function LoadScript(name)
 				msg: { type: 'init' }
 			};
 			_script.runInNewContext(_context);
-			console.log('Listeners');
 			
-			_isSimple = _bridge.listeners('osc').length == 0 &&
+			var _isSimple = _bridge.listeners('osc').length == 0 &&
 					_bridge.listeners('midi').length == 0;
 			
 			if (_isSimple) {
@@ -216,14 +352,13 @@ function LoadScript(name)
 	
 	this.recvOSC = function(msg)
 	{
-		_bridge.emit('osc', msg);
-		/*
-			_output.messageSent = false;
-			if (!_output.messageSent) {
-				console.log('Unknown OSC packet');
-				console.log(msg);
-			}
-		*/
+		try {
+			_bridge.emit('osc', msg);
+		}
+		catch(err) {
+			console.error("OSC Error:");
+			console.error(msg);
+		}
 	};
 	
 	this.recvMIDI = function(msg)
@@ -291,6 +426,7 @@ function LoadScript(name)
 	this.load = function()
 	{
 		console.log('Loading script: ' + _name);
+		
 		try {
 			_script = vm.createScript(fs.readFileSync(_path, 'utf-8'), _name);
 			_run();
@@ -310,6 +446,16 @@ function LoadScript(name)
 	
 	this.load();
 	
+	_bridge
+		.on("unknown.osc", function(msg) {
+			console.log("Unknown OSC message:");
+			console.log(msg);
+		})
+		.on ("unknown.midi", function(msg) {
+			console.log("Unknown MIDI message:");
+			console.log(msg);
+		});
+	
 	fs.watchFile(_path, function (event, filename) {
 		self.load();
 	});
@@ -318,14 +464,15 @@ function LoadScript(name)
 var RouterScript = new LoadScript(args.argv[0]);
 
 
-var ad = mdns.createAdvertisement(
-	mdns.udp('osc'),
+var adosc = mdns.createAdvertisement(
+	mdns.udp('osc'), 
 	parseInt((args.options.listen ?
 		args.options.listen:
 		defaults.osc_port))
 );
 
-ad.start();
+adosc.start();
+
 
 process.on('SIGINT', function () {
 	socket.close();
