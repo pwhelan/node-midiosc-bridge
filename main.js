@@ -31,22 +31,22 @@ var midi = require('midi'),
 	osc = require('osc-min'),
 	fs = require('fs'),
 	vm = require('vm'),
-	mdns = require('mdns'),
+	mdns = require('mdns2'),
 	events = require('events');
 
 
 var output = new midi.output();
 output.openVirtualPort(
 	args.options.midi ?
-		args.options.midi: 
-		defaults.midi_port 
+		args.options.midi:
+		defaults.midi_port
 );
 
 var input = new midi.input();
 input.openVirtualPort(
 	args.options.midi ?
-		args.options.midi: 
-		defaults.midi_port 
+		args.options.midi:
+		defaults.midi_port
 );
 
 input.on('message', function(deltaTime, message) {
@@ -319,10 +319,10 @@ var RouterScript = new LoadScript(args.argv[0]);
 
 
 var ad = mdns.createAdvertisement(
-	mdns.udp('osc'), 
-	args.options.listen ?
-		args.options.listen: 
-		defaults.osc_port 
+	mdns.udp('osc'),
+	parseInt((args.options.listen ?
+		args.options.listen:
+		defaults.osc_port))
 );
 
 ad.start();
